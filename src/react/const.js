@@ -1,1 +1,2 @@
 export const MY_REACT_TEXT_ELEMENT_TYPE = "TEXT";
+export const MY_REACT_EFFECT_INIT = 'INIT'
