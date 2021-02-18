@@ -20,11 +20,25 @@ function reconcileChildren(children, node) {
   });
 }
 
+function createClassComponentNode(element) {
+  const vNode = new element.type(element.props).render();
+  return createNode(vNode);
+}
+
+function createFCNode(element) {
+  const vNode = element.type(element.props);
+  return createNode(vNode);
+}
+
 function createNode(element) {
   const { type, props } = element;
   let node;
   if (type === MY_REACT_TEXT_ELEMENT_TYPE) {
     node = document.createTextNode("");
+  } else if (typeof type === "function") {
+    node = type.prototype.isReactElement
+      ? createClassComponentNode(element)
+      : createFCNode(element);
   } else if (typeof type === "string") {
     node = document.createElement(type);
   }
