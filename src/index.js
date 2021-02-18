@@ -1,3 +1,4 @@
+import React from "./react";
 const jsx = (
   <div>
     <p>我是 p 元素</p>
