@@ -1,8 +1,10 @@
-const jsx = (
-  <div>
-    <p>我是 p 元素</p>
-    <div>我是 div 元素</div>
+import React from "./react";
+import ReactDOM from "./react/react-dom";
+const element = (
+  <div id="foo">
+    <a>bar</a>
+    <b />
   </div>
 );
-
-ReactDOM.render(jsx, document.querySelector("#root"));
+const container = document.getElementById("root");
+ReactDOM.render(element, container);
