@@ -22,4 +22,9 @@ function createElement(type, props, ...children) {
   };
 }
 
-export default { createElement };
+export const useState = (init) => {
+  const setState = () => {};
+  return [init, setState];
+};
+
+export default { createElement, useState };

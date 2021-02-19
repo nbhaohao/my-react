@@ -6,13 +6,12 @@ import {
 } from "./const";
 
 function createDom(fiber) {
+  console.log(fiber);
   const dom =
     fiber.type === REACT_TEXT_NODE
       ? document.createTextNode("")
       : document.createElement(fiber.type);
-  Object.keys(fiber.props)
-    .filter(isProperty)
-    .forEach((name) => (dom[name] = fiber.props[name]));
+  updateDom(dom, {}, fiber.props);
   return dom;
 }
 
@@ -42,7 +41,7 @@ function reconcileChildren(fiber, elements) {
   let index = 0;
   let oldFiber = fiber.alternate && fiber.alternate.child;
   let prevSibling = null;
-  while (index < elements.length || oldFiber !== null) {
+  while (index < elements.length || oldFiber) {
     const element = elements[index];
     let newFiber = null;
     const sameType = oldFiber && element && element.type === oldFiber.type;
@@ -75,7 +74,7 @@ function reconcileChildren(fiber, elements) {
     }
     if (index === 0) {
       fiber.child = newFiber;
-    } else {
+    } else if (element) {
       prevSibling.sibling = newFiber;
     }
     prevSibling = newFiber;
@@ -83,9 +82,44 @@ function reconcileChildren(fiber, elements) {
   }
 }
 
+let wipFiber = null;
+let hookIndex = null;
+
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber;
+  hookIndex = 0;
+  // hooks 是为了支持我们在函数式组件中调用多次 useState
+  wipFiber.hooks = [];
   const elements = [fiber.type(fiber.props)];
   reconcileChildren(fiber, elements);
+}
+
+function useState(initial) {
+  const oldHook =
+    wipFiber.alternate &&
+    wipFiber.alternate.hooks &&
+    wipFiber.alternate.hooks[hookIndex];
+  const hook = {
+    state: oldHook ? oldHook.state : initial,
+    queue: [],
+  };
+  const actions = oldHook ? oldHook.queue : [];
+  actions.forEach((action) => {
+    hook.state = action(hook.state);
+  });
+  const setState = (action) => {
+    hook.queue.push(action);
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    nextUnitOfWork = wipRoot;
+    deletions = [];
+  };
+  wipFiber.hooks.push(hook);
+  hookIndex++;
+  return [hook.state, setState];
 }
 
 function updateHostComponent(fiber) {
@@ -199,4 +233,4 @@ function workLoop(deadLine) {
 
 requestIdleCallback(workLoop);
 
-export default { render };
+export default { render, useState };
