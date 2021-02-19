@@ -1,5 +1,5 @@
 import React from "./react";
-import ReactDOM from "./react/react-dom";
+import ReactDOM, { useState } from "./react/react-dom";
 import Component from "./react/Component";
 
 class ClassComponent extends Component {
@@ -9,7 +9,20 @@ class ClassComponent extends Component {
 }
 
 const FunctionElement = (props) => {
-  return <div>函数式组件 {props.name}</div>;
+  const [count, setCount] = useState(0);
+  return (
+    <div>
+      函数式组件 {props.name}
+      <p>{count}</p>
+      <button
+        onClick={() => {
+          setCount((value) => value + 1);
+        }}
+      >
+        add
+      </button>
+    </div>
+  );
 };
 
 const jsx = (

@@ -3,16 +3,28 @@
  * @param element
  * @returns {undefined}
  */
-import { MY_REACT_TEXT_ELEMENT_TYPE , MY_REACT_EFFECT_INIT} from "./const";
+import {
+  MY_REACT_TEXT_ELEMENT_TYPE,
+  MY_REACT_EFFECT_INIT,
+  MY_REACT_EFFECT_UPDATE,
+} from "./const";
 
 let nextUnitOfWork = null; // 下个工作任务
-let workInProgressFiber = null; // 当前工作的任务
+let workInProgressRootFiber = null; // 当前工作的根节点
+let currentProgressRootFiber = null; // 上个工作根节点
+let currentProgressFiber = null; // 当前正在执行的Fiber，用来在 useState 中获取
 
 function updateNode(node, props) {
   Object.keys(props)
     .filter((propName) => propName !== "children")
     .forEach((propName) => {
-      node[propName] = props[propName];
+      // 临时做个事件处理
+      if (propName.startsWith("on")) {
+        const eventName = propName.slice(2).toLowerCase();
+        node.addEventListener(eventName, props[propName]);
+      } else {
+        node[propName] = props[propName];
+      }
     });
 }
 
@@ -52,19 +64,42 @@ function createNode(element) {
   return node;
 }
 
-function reconcileChildren(workInProgressFiber, children) {
+function reconcileChildren(workInProgressRootFiber, children) {
   let prevSibling = null;
+  let oldFiber =
+    workInProgressRootFiber.base && workInProgressRootFiber.base.child;
   children.forEach((child, index) => {
-    let newFiber = {
-      type: child.type,
-      props: child.props,
-      node: null,
-      base: null,
-      return: workInProgressFiber,
-      effectTag: MY_REACT_EFFECT_INIT,
-    };
+    let newFiber = null;
+    // 复用的前提是 key 和 type 都相同，这里先不考虑 key
+    const sameType = child && oldFiber && child.type === oldFiber.type;
+    if (sameType) {
+      newFiber = {
+        type: child.type,
+        props: child.props,
+        node: oldFiber.node,
+        base: oldFiber,
+        return: workInProgressRootFiber,
+        effectTag: MY_REACT_EFFECT_UPDATE,
+      };
+    }
+    if (!sameType && child) {
+      newFiber = {
+        type: child.type,
+        props: child.props,
+        node: null,
+        base: null,
+        return: workInProgressRootFiber,
+        effectTag: MY_REACT_EFFECT_INIT,
+      };
+    }
+    if (!sameType && oldFiber) {
+      // 删除节点
+    }
+    if (oldFiber) {
+      oldFiber = oldFiber.sibling;
+    }
     if (index === 0) {
-      workInProgressFiber.child = newFiber;
+      workInProgressRootFiber.child = newFiber;
     } else {
       prevSibling.sibling = newFiber;
     }
@@ -80,6 +115,10 @@ function updateHostComponent(fiber) {
 }
 
 function updateFunctionComponent_fiber(fiber) {
+  // 保存状态，用于 type(props) 中获取 hook state
+  currentProgressFiber = fiber;
+  currentProgressFiber.hooks = [];
+  currentProgressFiber.hookIndex = 0;
   const { type, props } = fiber;
   const children = [type(props)];
   reconcileChildren(fiber, children);
@@ -127,6 +166,11 @@ function commitWorker(fiber) {
   }
   if (fiber.effectTag === MY_REACT_EFFECT_INIT && fiber.node !== null) {
     parentNodeFiber.node.appendChild(fiber.node);
+  } else if (
+    fiber.effectTag === MY_REACT_EFFECT_UPDATE &&
+    fiber.node !== null
+  ) {
+    updateNode(fiber.node, fiber.props);
   }
 
   commitWorker(fiber.child);
@@ -134,9 +178,10 @@ function commitWorker(fiber) {
 }
 
 function commitRoot() {
-  commitWorker(workInProgressFiber.child);
+  commitWorker(workInProgressRootFiber.child);
   // 完成任务后，把当前任务清空
-  workInProgressFiber = null;
+  currentProgressRootFiber = workInProgressRootFiber;
+  workInProgressRootFiber = null;
 }
 
 /**
@@ -147,13 +192,13 @@ function commitRoot() {
 function render(element, container) {
   const node = createNode(element);
   container.appendChild(node);
-  workInProgressFiber = {
+  workInProgressRootFiber = {
     node: container,
     props: {
       children: [element],
     },
   };
-  nextUnitOfWork = workInProgressFiber;
+  nextUnitOfWork = workInProgressRootFiber;
 }
 
 function workLoop(deadLine) {
@@ -163,7 +208,7 @@ function workLoop(deadLine) {
     nextUnitOfWork = performUnitOrWork(nextUnitOfWork);
   }
   // 说明当前任务都完成了，可以一次性提交了
-  if (!nextUnitOfWork && workInProgressFiber) {
+  if (!nextUnitOfWork && workInProgressRootFiber) {
     // 提交
     commitRoot();
   }
@@ -171,5 +216,34 @@ function workLoop(deadLine) {
 }
 
 window.requestIdleCallback(workLoop);
+
+export function useState(init) {
+  const oldHook =
+    currentProgressFiber.base &&
+    // 这里如果写死 0 也是正常工作的
+    currentProgressFiber.base.hooks[currentProgressFiber.hookIndex];
+  const hook = oldHook
+    ? { state: oldHook.state, queue: oldHook.queue }
+    : { state: init, queue: [] };
+  // 模拟批量更新，比如 setState 多次，只会取到 queue 中最后一个值
+  hook.queue.forEach((action) => {
+    hook.state = action;
+  });
+  const setState = (action) => {
+    // 只是为了模拟批量更新，防止多次调用 setState
+    hook.queue.push(typeof action === "function" ? action(hook.state) : action);
+    // 此时想要重新渲染之前的节点
+    workInProgressRootFiber = {
+      node: currentProgressRootFiber.node,
+      props: currentProgressRootFiber.props,
+      base: currentProgressRootFiber,
+    };
+    nextUnitOfWork = workInProgressRootFiber;
+  };
+
+  currentProgressFiber.hooks.push(hook);
+  currentProgressFiber.hookIndex++;
+  return [hook.state, setState];
+}
 
 export default { render };
