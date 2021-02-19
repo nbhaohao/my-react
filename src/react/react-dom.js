@@ -83,13 +83,28 @@ function reconcileChildren(fiber, elements) {
   }
 }
 
-// 创建节点，根据 children 创建 fibers, 获取下一个需要处理的节点
-function performUnitOfWork(fiber) {
+function updateFunctionComponent(fiber) {
+  const elements = [fiber.type(fiber.props)];
+  reconcileChildren(fiber, elements);
+}
+
+function updateHostComponent(fiber) {
   if (!fiber.dom) {
     fiber.dom = createDom(fiber);
   }
   const elements = fiber.props.children;
   reconcileChildren(fiber, elements);
+}
+
+// 创建节点，根据 children 创建 fibers, 获取下一个需要处理的节点
+function performUnitOfWork(fiber) {
+  const isFunctionComponent = fiber.type instanceof Function;
+  if (isFunctionComponent) {
+    updateFunctionComponent(fiber);
+  } else {
+    updateHostComponent(fiber);
+  }
+
   if (fiber.child) {
     return fiber.child;
   }
@@ -131,16 +146,28 @@ function updateDom(dom, prevProps, nextProps) {
     });
 }
 
+function commitDeletion(fiber, domParent) {
+  if (fiber.dom) {
+    domParent.removeChild(fiber.dom);
+  } else {
+    // 如果是函数式组件，内部也只有一个根节点，如果 remove 掉，那么整个组件也就被 remove 了
+    commitDeletion(fiber.child, domParent);
+  }
+}
+
 function commitWork(fiber) {
   if (!fiber) {
     return;
   }
-
-  const domParent = fiber.parent.dom;
+  let domParentFiber = fiber.parent;
+  while (!domParentFiber.dom) {
+    domParentFiber = domParentFiber.parent;
+  }
+  const domParent = domParentFiber.dom;
   if (fiber.effectTag === REACT_EFFECT_PLACEMENT_TAG && fiber.dom !== null) {
     domParent.appendChild(fiber.dom);
   } else if (fiber.effectTag === REACT_EFFECT_DELETE_TAG) {
-    domParent.removeChild(fiber.dom);
+    commitDeletion(fiber, domParent);
   } else if (
     fiber.effectTag === REACT_EFFECT_UPDATE_TAG &&
     fiber.dom !== null
